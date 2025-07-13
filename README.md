@@ -135,7 +135,6 @@ SARA is a modular, microservice-based platform designed to unify real-time senso
   /historical_processing
   /realtime_monitoring
 /docker-compose.yml
-.env.example
 ```
 
 ### Extending SARA
