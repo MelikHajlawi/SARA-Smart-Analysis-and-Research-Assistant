@@ -1,0 +1,174 @@
+version: '3.8'
+
+
+services:
+  db:
+    image: postgres:16-alpine  
+    container_name: sara-db
+    environment:
+      POSTGRES_PASSWORD: melik1234
+      POSTGRES_USER: postgres
+      POSTGRES_DB: sara
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    command: 
+      -c listen_addresses='*'
+      -c port=5432
+      -c password_encryption=scram-sha-256
+      -c ssl=off  
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - mynetwork
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sara"]
+      interval: 5s
+      timeout: 10s
+      retries: 10
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: 
+      PGADMIN_DEFAULT_PASSWORD:
+    ports:
+      - "8080:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - mynetwork
+
+  springboot:
+    build: ./springboot/sara
+    container_name: springboot-app
+    ports:
+      - "8081:8081"
+    environment:
+      - FRONTEND_HOST=${API_HOST}
+      - ENCRYPTION_MASTER_KEY=
+      - SPRING_REDIS_HOST=sara-cache
+      - SPRING_REDIS_PORT=6379
+      - SPRING_REDIS_PASSWORD=
+      - HISTORICAL_PROCESSING_URL=
+      - SPRING_DATASOURCE_URL=
+      - SPRING_DATASOURCE_USERNAME=
+      - SPRING_DATASOURCE_PASSWORD=
+      - APP_JWT_SECRET=
+      - APP_JWT_ACCESSEXPIRATIONMS=900000
+      - APP_JWT_REFRESHEXPIRATIONDAYS=7
+      - SPRING_REDIS_TIMEOUT=5000ms
+      - SPRING_REDIS_SSL=false
+    depends_on:
+      db:
+        condition: service_healthy
+      sara-cache:
+        condition: service_healthy
+    networks:
+      - mynetwork
+ 
+  historical_processing:
+    build: ./python-ms/historical_processing
+    container_name: historical-processing-ms
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./python-ms/historical_processing:/app
+    environment:
+      - LOG_LEVEL=DEBUG
+
+    command: uvicorn main:app --host 0.0.0.0 --port 5000 --reload --log-level debug
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - mynetwork
+
+  realtime-monitoring:
+    build: ./python-ms/realtime_monitoring
+    container_name: realtime-monitoring
+    env_file: .env                     
+    ports:
+      - "8002:8002"
+    environment:
+      FRONTEND_HOST: "http://${API_HOST}:4200"
+
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8002
+    networks:
+      - mynetwork
+
+
+  angular:
+    build:
+      context: ./angular/SmartResearchAssistant
+      args:
+        - API_HOST=${API_HOST}
+    container_name: angular-app
+    ports:
+      - "4200:4200"
+    command: ng serve --host 0.0.0.0 --port 4200 --poll=2000
+    depends_on:
+      - springboot
+    networks:
+      - mynetwork
+
+  sara-cache:
+    image: redis:7-alpine
+    container_name: 
+    environment:
+      REDIS_PASSWORD: 
+    ports:
+      - "6379:6379"
+    volumes:
+      - sara_redis_data:/data
+    command: 
+      - redis-server
+      - --requirepass 
+      - --maxmemory 1GB
+      - --maxmemory-policy allkeys-lru
+      - --appendonly yes
+      - --save 900 1
+      - --save 300 10
+    networks:
+      - mynetwork
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "", "--no-auth-warning", "ping"]
+      start_period: 30s 
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis-insight:
+    image: redis/redisinsight:2.48.0
+    container_name: redis-insight
+    ports:
+      - "8001:8001"
+    volumes:
+      - redisinsight_data:/db
+    environment:
+      RI_HOST: 0.0.0.0
+    depends_on:
+      sara-cache:
+        condition: service_healthy
+    networks:
+      - mynetwork
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+
+volumes:
+  db_data:
+  sara_redis_data:
+  redisinsight_data:
+
+
+networks:
+  mynetwork:
+    driver: bridge
