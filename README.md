@@ -29,7 +29,6 @@ SARA is a modular, microservice-based platform designed to unify real-time senso
 
    * [Project Structure](#project-structure)
    * [Extending SARA](#extending-sara)
-6. [License](#license)
 
 ---
 
