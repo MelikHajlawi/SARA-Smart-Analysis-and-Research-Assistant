@@ -53,15 +53,6 @@ SARA is a modular, microservice-based platform designed to unify real-time senso
 
 ---
 
-## Getting Started
-
-### Prerequisites
-
-* Docker & Docker Compose
-* Node.js (for local development)
-* Java 21+
-* Python 3.11+
-
 
 
 ## Usage
